@@ -1,0 +1,354 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: Dimension courante des clients.
+    columns:
+      - name: customer_key
+        description: Clé technique du client.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: customer_id
+        description: Clé métier du client.
+        data_tests:
+          - not_null
+          - unique
+
+  - name: dim_products
+    description: Dimension courante des produits.
+    columns:
+      - name: product_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: product_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: standard_cost
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+      - name: list_price
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+  - name: dim_suppliers
+    description: Dimension courante des fournisseurs.
+    columns:
+      - name: supplier_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: supplier_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: risk_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - LOW
+                  - MEDIUM
+                  - HIGH
+
+  - name: dim_warehouses
+    description: Dimension des entrepôts.
+    columns:
+      - name: warehouse_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: warehouse_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: capacity_units
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "> 0"
+
+  - name: dim_carriers
+    description: Dimension des transporteurs.
+    columns:
+      - name: carrier_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: carrier_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: dim_date
+    description: Calendrier analytique quotidien.
+    columns:
+      - name: date_key
+        data_tests:
+          - not_null
+          - unique
+
+  - name: fct_sales
+    description: >
+      Table de faits des ventes au grain d'une ligne
+      de commande client.
+
+    columns:
+      - name: order_line_id
+        description: Clé métier de la ligne de commande.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: order_id
+        data_tests:
+          - not_null
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+
+      - name: warehouse_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_warehouses')
+                field: warehouse_key
+
+      - name: order_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: order_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - DELIVERED
+                  - SHIPPED
+                  - CANCELLED
+                  - PROCESSING
+
+      - name: quantity
+        data_tests:
+          - not_null
+
+      - name: net_sales_amount
+        data_tests:
+          - not_null
+
+  - name: fct_shipments
+    description: >
+      Table de faits au grain d'une expédition.
+
+    columns:
+      - name: shipment_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: order_id
+        data_tests:
+          - not_null
+
+      - name: carrier_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_carriers')
+                field: carrier_key
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
+
+      - name: warehouse_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_warehouses')
+                field: warehouse_key
+
+      - name: ship_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: shipment_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - DELIVERED
+                  - IN_TRANSIT
+
+  - name: fct_purchase_orders
+    description: >
+      Table de faits d'achat au grain d'une ligne
+      de commande fournisseur.
+
+    columns:
+      - name: po_line_id
+        data_tests:
+          - not_null
+          - unique
+
+      - name: purchase_order_id
+        data_tests:
+          - not_null
+
+      - name: supplier_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_suppliers')
+                field: supplier_key
+
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+
+      - name: warehouse_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_warehouses')
+                field: warehouse_key
+
+      - name: order_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: purchase_order_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - RECEIVED
+                  - OPEN
+                  - CANCELLED
+
+      - name: ordered_qty
+        data_tests:
+          - not_null
+
+      - name: received_qty
+        data_tests:
+          - not_null
+
+      - name: fill_rate
+        data_tests:
+          - not_null
+
+  - name: fct_inventory_daily
+    description: >
+      État quotidien du stock au grain date,
+      entrepôt et produit.
+
+    columns:
+      - name: inventory_snapshot_key
+        data_tests:
+          - not_null
+          - unique
+
+      - name: snapshot_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: warehouse_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_warehouses')
+                field: warehouse_key
+
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_key
+
+      - name: inventory_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - STOCKOUT
+                  - REORDER
+                  - LOW
+                  - HEALTHY
+
+      - name: on_hand_qty
+        data_tests:
+          - not_null
+
+      - name: allocated_qty
+        data_tests:
+          - not_null
+
+      - name: available_qty
+        data_tests:
+          - not_null

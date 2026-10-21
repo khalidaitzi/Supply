@@ -1,0 +1,129 @@
+version: 2
+
+sources:
+  - name: supply
+    description: >
+      Tables RAW Snowflake chargées depuis les fichiers CSV
+      déposés sur Azure Blob Storage.
+
+    database: HEROES_DB
+    schema: HEROES_SCHEMA
+    loader: Boomi
+
+    config:
+      loaded_at_field: _loaded_at
+
+      freshness:
+        warn_after:
+          count: 48
+          period: hour
+
+        error_after:
+          count: 72
+          period: hour
+
+    tables:
+      - name: customers
+        description: Référentiel brut des clients.
+        columns:
+          - name: customer_id
+            data_tests:
+              - not_null
+
+      - name: products
+        description: Référentiel brut des produits.
+        columns:
+          - name: product_id
+            data_tests:
+              - not_null
+
+      - name: suppliers
+        description: Référentiel brut des fournisseurs.
+        columns:
+          - name: supplier_id
+            data_tests:
+              - not_null
+
+      - name: warehouses
+        description: Référentiel brut des entrepôts.
+        columns:
+          - name: warehouse_id
+            data_tests:
+              - not_null
+
+      - name: carriers
+        description: Référentiel brut des transporteurs.
+        columns:
+          - name: carrier_id
+            data_tests:
+              - not_null
+
+      - name: orders
+        description: En-têtes bruts des commandes clients.
+        columns:
+          - name: order_id
+            data_tests:
+              - not_null
+
+          - name: customer_id
+            data_tests:
+              - not_null
+
+      - name: order_lines
+        description: Lignes brutes des commandes clients.
+        columns:
+          - name: order_line_id
+            data_tests:
+              - not_null
+
+          - name: order_id
+            data_tests:
+              - not_null
+
+      - name: shipments
+        description: Expéditions brutes.
+        columns:
+          - name: shipment_id
+            data_tests:
+              - not_null
+
+          - name: order_id
+            data_tests:
+              - not_null
+
+      - name: purchase_orders
+        description: En-têtes bruts des commandes fournisseurs.
+        columns:
+          - name: purchase_order_id
+            data_tests:
+              - not_null
+
+          - name: supplier_id
+            data_tests:
+              - not_null
+
+      - name: purchase_order_lines
+        description: Lignes brutes des commandes fournisseurs.
+        columns:
+          - name: po_line_id
+            data_tests:
+              - not_null
+
+          - name: purchase_order_id
+            data_tests:
+              - not_null
+
+      - name: inventory_snapshots
+        description: Photographies quotidiennes brutes du stock.
+        columns:
+          - name: snapshot_date
+            data_tests:
+              - not_null
+
+          - name: warehouse_id
+            data_tests:
+              - not_null
+
+          - name: product_id
+            data_tests:
+              - not_null
