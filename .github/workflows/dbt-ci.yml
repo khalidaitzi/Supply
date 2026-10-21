@@ -20,17 +20,6 @@ on:
     branches:
       - main
 
-    paths:
-      - "SupplyChain/models/**"
-      - "SupplyChain/tests/**"
-      - "SupplyChain/snapshots/**"
-      - "SupplyChain/macros/**"
-      - "SupplyChain/seeds/**"
-      - "SupplyChain/analyses/**"
-      - "SupplyChain/dbt_project.yml"
-      - "SupplyChain/packages.yml"
-      - ".github/workflows/dbt-ci.yml"
-
   workflow_dispatch:
 
 permissions:
@@ -42,7 +31,6 @@ concurrency:
 
 
 jobs:
-
   dbt-ci:
     name: Validate dbt pull request
 
@@ -51,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
 
     environment:
-      name: DBT_BTC
+      name: DBT_SUPPLYCHAIN_CI
       deployment: false
 
     timeout-minutes: 45
@@ -62,7 +50,14 @@ jobs:
 
     env:
       DBT_PROFILES_YML: ${{ secrets.DBT_PROFILES_YML }}
-      DBT_PASSWORD: ${{ secrets.PASSWORD }}
+      DBT_PRIVATE_KEY: ${{ secrets.DBT_PRIVATE_KEY }}
+
+      DBT_PRIVATE_KEY_PATH: /home/runner/.dbt/rsa_key.p8
+
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+
+      DBT_TARGET_SCHEMA: DBT_CI_PR_${{ github.event.pull_request.number }}
 
     steps:
       - name: Checkout repository
@@ -80,27 +75,68 @@ jobs:
             dbt-core==1.12.6 \
             dbt-snowflake==1.12.3
 
-      - name: Set up dbt profile
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [ -z "${DBT_PROFILES_YML}" ]; then
+            echo "::error::DBT_PROFILES_YML is empty"
+            exit 1
+          fi
+
+          if [ -z "${DBT_PRIVATE_KEY}" ]; then
+            echo "::error::DBT_PRIVATE_KEY is empty"
+            exit 1
+          fi
+
+          if [ -z "${SNOWFLAKE_ACCOUNT}" ]; then
+            echo "::error::SNOWFLAKE_ACCOUNT is empty"
+            exit 1
+          fi
+
+          if [ -z "${SNOWFLAKE_USER}" ]; then
+            echo "::error::SNOWFLAKE_USER is empty"
+            exit 1
+          fi
+
+          echo "All required secrets are available."
+
+      - name: Set up dbt profile and private key
         shell: bash
         run: |
           mkdir -p "${HOME}/.dbt"
+
           printf '%s' "${DBT_PROFILES_YML}" \
             > "${HOME}/.dbt/profiles.yml"
 
-      - name: Install dbt packages
+          printf '%s' "${DBT_PRIVATE_KEY}" \
+            > "${DBT_PRIVATE_KEY_PATH}"
+
+          chmod 600 "${DBT_PRIVATE_KEY_PATH}"
+
+          test -s "${HOME}/.dbt/profiles.yml"
+          test -s "${DBT_PRIVATE_KEY_PATH}"
+
+      - name: Install dbt dependencies
         run: dbt deps
 
-      - name: Validate dbt connection
-        run: dbt debug --target dev
+      - name: Run dbt debug
+        run: dbt debug --target ci
 
       - name: Parse dbt project
-        run: dbt parse --target dev --no-partial-parse
+        run: dbt parse --target ci --no-partial-parse
 
       - name: Compile dbt project
-        run: dbt compile --target dev
+        run: dbt compile --target ci
 
       - name: Build and test dbt project
-        run: dbt build --target dev
+        run: |
+          dbt build \
+            --target ci \
+            --vars '{"incremental_lookback_days": 3}'
+
+      - name: Generate dbt documentation
+        if: success()
+        run: dbt docs generate --target ci
 
       - name: Upload dbt artifacts
         if: always()
@@ -116,80 +152,3 @@ jobs:
 
           if-no-files-found: ignore
           retention-days: 14
-
-
-  dbt-production:
-    name: Deploy dbt after merge
-
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    runs-on: ubuntu-latest
-
-    environment: DBT_BTC
-
-    timeout-minutes: 60
-
-    defaults:
-      run:
-        working-directory: SupplyChain
-
-    env:
-      DBT_PROFILES_YML: ${{ secrets.DBT_PROFILES_YML }}
-      DBT_PASSWORD: ${{ secrets.PASSWORD }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12.10"
-
-      - name: Install dbt
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install \
-            dbt-core==1.12.6 \
-            dbt-snowflake==1.12.3
-
-      - name: Set up dbt profile
-        shell: bash
-        run: |
-          mkdir -p "${HOME}/.dbt"
-          printf '%s' "${DBT_PROFILES_YML}" \
-            > "${HOME}/.dbt/profiles.yml"
-
-      - name: Install dbt packages
-        run: dbt deps
-
-      - name: Validate dbt connection
-        run: dbt debug --target dev
-
-      - name: Parse dbt project
-        run: dbt parse --target dev --no-partial-parse
-
-      - name: Check source freshness
-        run: dbt source freshness --target dev
-
-      - name: Build dbt project
-        run: dbt build --target dev
-
-      - name: Generate dbt documentation
-        run: dbt docs generate --target dev
-
-      - name: Upload production artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dbt-artifacts-${{ github.sha }}
-
-          path: |
-            SupplyChain/target/manifest.json
-            SupplyChain/target/run_results.json
-            SupplyChain/target/catalog.json
-            SupplyChain/target/sources.json
-            SupplyChain/target/index.html
-
-          if-no-files-found: ignore
-          retention-days: 90
