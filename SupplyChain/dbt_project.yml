@@ -1,0 +1,187 @@
+# ---------------------------------------------------------
+# INFORMATIONS GÉNÉRALES DU PROJET
+# ---------------------------------------------------------
+
+# Le nom doit correspondre exactement à la clé utilisée
+# sous models:, seeds:, snapshots: et data_tests:.
+name: "SupplyChain"
+
+version: "1.0.0"
+
+config-version: 2
+
+
+# ---------------------------------------------------------
+# PROFIL DE CONNEXION
+# ---------------------------------------------------------
+
+# Ce nom doit correspondre exactement à la clé principale
+# du fichier C:\Users\kaitzi\.dbt\profiles.yml
+profile: "SupplyChain"
+
+
+# ---------------------------------------------------------
+# CHEMINS DU PROJET
+# ---------------------------------------------------------
+
+model-paths:
+  - "models"
+
+analysis-paths:
+  - "analyses"
+
+test-paths:
+  - "tests"
+
+seed-paths:
+  - "seeds"
+
+macro-paths:
+  - "macros"
+
+snapshot-paths:
+  - "snapshots"
+
+
+# ---------------------------------------------------------
+# RÉPERTOIRES SUPPRIMÉS PAR dbt clean
+# ---------------------------------------------------------
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+
+# ---------------------------------------------------------
+# CONFIGURATION DES MODÈLES
+# ---------------------------------------------------------
+
+models:
+  SupplyChain:
+
+    # -----------------------------------------------------
+    # STAGING
+    #
+    # Données nettoyées, typées et dédupliquées.
+    # Ces modèles lisent HEROES_DB.HEROES_SCHEMA.
+    #
+    # Résultat DEV attendu :
+    # HEROES_DB.DBT_KHALID_STAGING
+    # -----------------------------------------------------
+
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags:
+        - staging
+
+
+    # -----------------------------------------------------
+    # INTERMEDIATE
+    #
+    # Jointures et règles métier réutilisables.
+    # La majorité des modèles intermédiaires sont ephemeral,
+    # donc ils ne créent pas d'objet dans Snowflake.
+    # -----------------------------------------------------
+
+    intermediate:
+      +materialized: ephemeral
+      +tags:
+        - intermediate
+
+      # Le modèle quotidien d'inventaire est réutilisable
+      # et potentiellement volumineux.
+
+
+    # -----------------------------------------------------
+    # MARTS
+    #
+    # Dimensions et faits destinés aux analyses.
+    #
+    # Résultat DEV attendu :
+    # HEROES_DB.DBT_KHALID_ANALYTICS
+    # -----------------------------------------------------
+
+    marts:
+      +schema: analytics
+      +tags:
+        - marts
+
+      dimensions:
+        +materialized: table
+        +tags:
+          - marts
+          - dimensions
+
+      facts:
+        +materialized: incremental
+        +incremental_strategy: merge
+        +on_schema_change: sync_all_columns
+        +tags:
+          - marts
+          - facts
+
+
+    # -----------------------------------------------------
+    # REPORTING
+    #
+    # Agrégations prêtes pour Power BI ou Tableau.
+    #
+    # Résultat DEV attendu :
+    # HEROES_DB.DBT_KHALID_REPORTING
+    # -----------------------------------------------------
+
+    reporting:
+      +materialized: table
+      +schema: reporting
+      +tags:
+        - reporting
+
+
+# ---------------------------------------------------------
+# CONFIGURATION DES SEEDS
+#
+# Résultat DEV attendu :
+# HEROES_DB.DBT_KHALID_REFERENCE
+# ---------------------------------------------------------
+
+seeds:
+  SupplyChain:
+    +schema: reference
+    +quote_columns: false
+
+
+# ---------------------------------------------------------
+# CONFIGURATION DES SNAPSHOTS
+#
+# Résultat DEV attendu :
+# HEROES_DB.DBT_KHALID_SNAPSHOTS
+# ---------------------------------------------------------
+
+snapshots:
+  SupplyChain:
+    +schema: snapshots
+
+
+# ---------------------------------------------------------
+# CONFIGURATION DES TESTS
+#
+# Les lignes invalides seront conservées dans :
+# HEROES_DB.DBT_KHALID_TEST_RESULTS
+# ---------------------------------------------------------
+
+data_tests:
+  SupplyChain:
+    +store_failures: true
+    +schema: test_results
+
+
+# ---------------------------------------------------------
+# VARIABLES DU PROJET
+# ---------------------------------------------------------
+
+vars:
+  # Les modèles incrémentaux retraitent les trois derniers
+  # jours pour prendre en charge les fichiers arrivés en retard.
+  incremental_lookback_days: 3

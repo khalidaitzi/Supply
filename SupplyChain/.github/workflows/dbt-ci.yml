@@ -1,0 +1,230 @@
+name: dbt CI/CD
+
+on:
+  pull_request:
+    branches:
+      - master
+
+    paths:
+      - "models/**"
+      - "tests/**"
+      - "snapshots/**"
+      - "macros/**"
+      - "seeds/**"
+      - "analyses/**"
+      - "dbt_project.yml"
+      - "packages.yml"
+      - ".github/workflows/dbt-ci.yml"
+
+  push:
+    branches:
+      - master
+
+    paths:
+      - "models/**"
+      - "tests/**"
+      - "snapshots/**"
+      - "macros/**"
+      - "seeds/**"
+      - "analyses/**"
+      - "dbt_project.yml"
+      - "packages.yml"
+      - ".github/workflows/dbt-ci.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+
+  # =======================================================
+  # PULL REQUEST VALIDATION
+  # =======================================================
+
+  dbt-ci:
+    name: Validate dbt pull request
+
+    if: github.event_name == 'pull_request'
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: DBT_SUPPLYCHAIN_CI
+      deployment: false
+
+    timeout-minutes: 45
+
+    env:
+      DBT_PROFILES_YML: ${{ secrets.DBT_PROFILES_YML }}
+      DBT_PRIVATE_KEY: ${{ secrets.DBT_PRIVATE_KEY }}
+      DBT_PRIVATE_KEY_PATH: /home/runner/.dbt/rsa_key.p8
+
+      # Chaque pull request écrit dans son propre schéma.
+      DBT_TARGET_SCHEMA: DBT_CI_PR_${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.10"
+          cache: pip
+
+      - name: Install dbt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            dbt-core==1.12.6 \
+            dbt-snowflake==1.12.3
+
+      - name: Set up dbt profile and private key
+        shell: bash
+        run: |
+          mkdir -p "${HOME}/.dbt"
+
+          printf '%s' "${DBT_PROFILES_YML}" \
+            > "${HOME}/.dbt/profiles.yml"
+
+          printf '%s' "${DBT_PRIVATE_KEY}" \
+            > "${DBT_PRIVATE_KEY_PATH}"
+
+          chmod 600 "${DBT_PRIVATE_KEY_PATH}"
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Validate dbt connection
+        run: dbt debug --target ci
+
+      - name: Parse dbt project
+        run: dbt parse --target ci --no-partial-parse
+
+      - name: Compile dbt project
+        run: dbt compile --target ci
+
+      - name: Build and test CI environment
+        run: |
+          dbt build \
+            --target ci \
+            --vars '{"incremental_lookback_days": 3}'
+
+      - name: Generate dbt documentation
+        if: success()
+        run: dbt docs generate --target ci
+
+      - name: Upload dbt CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-ci-artifacts-pr-${{ github.event.pull_request.number }}
+
+          path: |
+            target/manifest.json
+            target/run_results.json
+            target/catalog.json
+            target/sources.json
+
+          if-no-files-found: ignore
+          retention-days: 14
+
+
+  # =======================================================
+  # MERGE / DEPLOYMENT TO PRODUCTION
+  # =======================================================
+
+  dbt-production:
+    name: Deploy dbt production
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    runs-on: ubuntu-latest
+
+    environment: DBT_SUPPLYCHAIN_PROD
+
+    timeout-minutes: 60
+
+    env:
+      DBT_PROFILES_YML: ${{ secrets.DBT_PROFILES_YML }}
+      DBT_PRIVATE_KEY: ${{ secrets.DBT_PRIVATE_KEY }}
+      DBT_PRIVATE_KEY_PATH: /home/runner/.dbt/rsa_key.p8
+
+      # Schéma de base de la production.
+      DBT_TARGET_SCHEMA: PROD
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.10"
+          cache: pip
+
+      - name: Install dbt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            dbt-core==1.12.6 \
+            dbt-snowflake==1.12.3
+
+      - name: Set up dbt profile and private key
+        shell: bash
+        run: |
+          mkdir -p "${HOME}/.dbt"
+
+          printf '%s' "${DBT_PROFILES_YML}" \
+            > "${HOME}/.dbt/profiles.yml"
+
+          printf '%s' "${DBT_PRIVATE_KEY}" \
+            > "${DBT_PRIVATE_KEY_PATH}"
+
+          chmod 600 "${DBT_PRIVATE_KEY_PATH}"
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Validate production connection
+        run: dbt debug --target prod
+
+      - name: Parse dbt project
+        run: dbt parse --target prod --no-partial-parse
+
+      - name: Compile dbt project
+        run: dbt compile --target prod
+
+      - name: Check source freshness
+        run: dbt source freshness --target prod
+
+      - name: Build production project
+        run: |
+          dbt build \
+            --target prod \
+            --vars '{"incremental_lookback_days": 3}'
+
+      - name: Generate production documentation
+        run: dbt docs generate --target prod
+
+      - name: Upload production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-prod-artifacts-${{ github.sha }}
+
+          path: |
+            target/manifest.json
+            target/run_results.json
+            target/catalog.json
+            target/sources.json
+            target/index.html
+
+          if-no-files-found: ignore
+          retention-days: 90

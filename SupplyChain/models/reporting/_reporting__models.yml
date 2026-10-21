@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: rpt_supply_chain_daily
+    description: >
+      KPIs quotidiens de ventes et de logistique
+      par entrepôt.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - metric_date
+              - warehouse_key
+
+    columns:
+      - name: metric_date
+        data_tests:
+          - not_null
+
+      - name: warehouse_key
+        data_tests:
+          - not_null
+
+      - name: order_count
+        data_tests:
+          - not_null
+
+      - name: net_sales_amount
+        data_tests:
+          - not_null
+
+  - name: rpt_supplier_performance
+    description: >
+      Performance mensuelle des fournisseurs.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - performance_month
+              - supplier_key
+
+    columns:
+      - name: performance_month
+        data_tests:
+          - not_null
+
+      - name: supplier_key
+        data_tests:
+          - not_null
+
+  - name: rpt_inventory_health
+    description: >
+      État quotidien valorisé du stock par produit
+      et entrepôt.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - snapshot_date
+              - warehouse_key
+              - product_key
+
+    columns:
+      - name: snapshot_date
+        data_tests:
+          - not_null
+
+      - name: inventory_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - STOCKOUT
+                  - REORDER
+                  - LOW
+                  - HEALTHY
